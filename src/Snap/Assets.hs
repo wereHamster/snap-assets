@@ -5,6 +5,7 @@ import Data.Time.Clock
 import Data.ByteString
 import Snap.Core
 import qualified Data.Map as M
+import Control.Applicative
 
 
 data Config = Config
@@ -148,3 +149,42 @@ fingerprintedAssetName name fingerprint =
     -- ["-", fingerprint] in the middle, then join the parts again.
 
     return undefined
+
+
+-- | This function takes the contents of an asset and replaces all references
+--   to other assets with the correct urls.
+--
+--   The individual builders may want to decide whether to use this function
+--   or not. For example, it makes sense to use it on JavaScript or CSS files,
+--   but not so much on images.
+resolveReferences :: Config -> [ Asset ] -> ByteString -> IO ByteString
+resolveReferences config assets contents = do
+
+    -- Scan the contents for magic instructions such as <%= asset_path ... %>
+    -- and replace those references with the correct urls. This may need to be
+    -- done recursively.
+    --
+    -- That requires keeping some kind of state, such as the list of files
+    -- you've already processed etc. But this is getting way over my head
+    -- and/or haskell skills.
+
+    return undefined
+
+
+-- Lastly, it is desired to compress/minify the files in production mode. This
+-- can be done either implicitly (detect filename extension and run the
+-- correct compressor depending on the file type) or explicitly by
+-- enabling/disabling them in the configuration.
+
+minifyJavascript :: Config -> Maybe UTCTime -> BuilderResult -> IO BuilderResult
+minifyJavascript config lastModified result =
+    case result of
+        NotModified       -> return NotModified
+        Contents contents -> Contents <$> uglify contents
+
+  where
+
+    uglify :: ByteString -> IO ByteString
+    uglify x = undefined
+    -- Spawn the 'uglifyjs' commandline utility, feed it the pretty javascript
+    -- and capture its output.
