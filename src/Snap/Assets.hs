@@ -2,10 +2,17 @@ module Snap.Assets where
 
 
 import Data.Time.Clock
-import Data.ByteString
+import           Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy  as L
+import qualified Data.ByteString       as S
+import qualified Data.ByteString.Char8 as C
 import Snap.Core
 import qualified Data.Map as M
 import Control.Applicative
+import Control.Monad
+import System.Directory
+import           Control.Monad.IO.Class
+
 
 
 data Config = Config
@@ -46,10 +53,30 @@ data BuilderResult
 
     | Contents ByteString
 
+  deriving Show
 
--- | Concatenates all files into a single blob.
+
+-- | Concatenate all files into a single blob.
 concatBuilder :: [ FilePath ] -> Builder
-concatBuilder files _ _ = undefined -- read all files, concatenate them
+concatBuilder files config Nothing = do
+    let root  = configRoot config
+    let paths = map (root++) files
+    Contents <$> L.concat <$> mapM L.readFile paths
+
+concatBuilder files config (Just ifModifiedSince) = do
+    let root  = configRoot config
+    let paths = map (root++) files
+
+    mtime <- foldM oldestModificationTime ifModifiedSince paths
+    if mtime == ifModifiedSince
+        then return NotModified
+        else Contents <$> L.concat <$> mapM L.readFile paths
+
+  where
+
+    oldestModificationTime :: UTCTime -> FilePath -> IO UTCTime
+    oldestModificationTime acc path =
+        min acc <$> getModificationTime path
 
 
 -- | This builder builds the file using browserify. That tool is nice because
@@ -83,13 +110,22 @@ assets =
 -- to the client.
 
 snapAssetHandler :: Config -> [ Asset ] -> Snap ()
-snapAssetHandler config assets = do
-    -- 1. Extract the path from the request.
-    -- 2. See if it starts with /assets/.
-    -- 3. Find the asset in the asset list.
-    -- 4. Run the builder and return the contents to the client.
+snapAssetHandler config assets = route routes
+  where
 
-    return ()
+    routes = map snapHandler assets
+
+    snapHandler :: Asset -> ( S.ByteString, Snap () )
+    snapHandler asset = ( C.pack (assetName asset), assetHandler asset )
+
+    assetHandler :: Asset -> Snap ()
+    assetHandler asset = do
+        result <- liftIO $ (assetBuilder asset) config Nothing
+        case result of
+            NotModified -> notModified
+            Contents x  -> writeLBS x
+
+    notModified = modifyResponse $ setResponseStatus 304 "Not Modified"
 
 
 -- Now, in production mode we need to fingerprint the files. Eg. turn

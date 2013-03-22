@@ -51,7 +51,26 @@ library
   
   -- Other library packages from which modules are imported.
   build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+  build-depends:       time
+  build-depends:       directory
+  build-depends:       containers
+  build-depends:       transformers
   
   -- Directories containing source files.
   hs-source-dirs:      src
+
+  Ghc-Options:         -Wall
+  Extensions:          OverloadedStrings
   
+executable test
+    Main-Is: Main.hs
+    hs-source-dirs:      src
+    build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+    build-depends:       time
+    build-depends:       directory
+    build-depends:       containers
+    build-depends:       transformers
+    build-depends:       snap-server
+    Ghc-Options:         -Wall
+
+    Extensions:          OverloadedStrings
