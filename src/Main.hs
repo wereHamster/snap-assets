@@ -19,8 +19,7 @@ assets =
 
 main :: IO ()
 main = do
-    cwd <- getCurrentDirectory
-    let config = A.Config (cwd ++ "/assets/")
+    config <- A.defaultConfig
     quickHttpServe $ site config
 
 site :: A.Config -> Snap ()
