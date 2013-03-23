@@ -8,10 +8,12 @@ import qualified Data.ByteString       as S
 import qualified Data.ByteString.Char8 as C
 import Snap.Core
 import qualified Data.Map as M
+import Data.Digest.Pure.SHA
 import Control.Applicative
 import Control.Monad
 import System.Directory
 import           Control.Monad.IO.Class
+import System.FilePath.Posix
 
 
 
@@ -141,15 +143,35 @@ snapAssetHandler config assets = route routes
 -- this manifest file to insert the correct urls into the templates.
 
 type Manifest = M.Map String String
+
+-- | For each asset, run the builder to generate the contents, then take the
+--   SHA1 of that and add to the manifest. Write the generated files into
+--   the output directory, using the correct (fingerprinted) name.
+--   The idea is then to upload the contents of the output directory to your
+--   CDN, so it can be served by fast/dedicated servers.
 precompileAssets :: Config -> [ Asset ] -> String -> IO Manifest
 precompileAssets config assets outputDirectory = do
-    -- For each asset, run the builder to generate the contents, then take the
-    -- SHA1 of that and add to the manifest. Write the generated files into
-    -- the output directory, using the correct (fingerprinted) name.
-    -- The idea is then to upload the contents of the output directory to your
-    -- CDN, so it can be served by fast/dedicated servers.
+    createDirectoryIfMissing True outputDirectory
+    foldM updateManifest M.empty assets
 
-    return M.empty
+  where
+
+    updateManifest :: Manifest -> Asset -> IO Manifest
+    updateManifest manifest asset = do
+        fingerprint <- assetFingerprint config assets asset
+        let name = fingerprintedAssetName (assetName asset) fingerprint
+
+        result <- (assetBuilder asset) config Nothing
+        case result of
+            NotModified -> error "noway"
+            Contents contents -> do
+                parsedContents <- resolveReferences config assets contents
+                L.writeFile (outputDirectory ++ "/" ++ name) parsedContents
+
+                return $ M.insert (assetName asset) fingerprint manifest
+
+
+
 
 
 -- I have that much written in JavaScript and it's in use in encounter. But
@@ -170,21 +192,26 @@ precompileAssets config assets outputDirectory = do
 -- you'd detect that instead of blowing up your stack.
 
 
+-- | Run the builder to get the contents, and create the fingerprint (SHA1).
+--   Because the fingerprint can depend on other assets, this function needs
+--   to know the config and the list of all assets.
 assetFingerprint :: Config -> [ Asset ] -> Asset -> IO String
 assetFingerprint config assets asset = do
-    -- Run the builder to get the contents, and create the fingerprint (SHA1).
-    -- Because the fingerprint can depend on other assets, this function needs
-    -- to know the config and the list of all assets.
+    result <- (assetBuilder asset) config Nothing
+    case result of
+        NotModified -> error "noway"
+        Contents contents -> do
+            parsedContents <- resolveReferences config assets contents
+            return $ showDigest $ sha1 parsedContents
 
-    return undefined
 
 
+-- | Split the name into basename + extension ["frameworks", ".js"], insert
+--   ["-", fingerprint] in the middle, then join the parts again.
 fingerprintedAssetName :: String -> String -> String
 fingerprintedAssetName name fingerprint =
-    -- Split the name into basename + extension ["frameworks", ".js"], insert
-    -- ["-", fingerprint] in the middle, then join the parts again.
-
-    return undefined
+    let split = splitExtension name
+    in (fst split) ++ "-" ++ fingerprint ++ (snd split)
 
 
 -- | This function takes the contents of an asset and replaces all references
@@ -204,7 +231,8 @@ resolveReferences config assets contents = do
     -- you've already processed etc. But this is getting way over my head
     -- and/or haskell skills.
 
-    return undefined
+    -- For now, this function is a noop.
+    return contents
 
 
 -- Lastly, it is desired to compress/minify the files in production mode. This

@@ -55,14 +55,16 @@ library
   build-depends:       directory
   build-depends:       containers
   build-depends:       transformers
+  build-depends:       SHA
+  build-depends:       filepath
   
   -- Directories containing source files.
   hs-source-dirs:      src
 
-  Ghc-Options:         -Wall
+  --Ghc-Options:         -Wall
   Extensions:          OverloadedStrings
   
-executable test
+executable server
     Main-Is: Main.hs
     hs-source-dirs:      src
     build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
@@ -71,6 +73,25 @@ executable test
     build-depends:       containers
     build-depends:       transformers
     build-depends:       snap-server
-    Ghc-Options:         -Wall
+    build-depends:       SHA
+    build-depends:       filepath
+
+    --Ghc-Options:         -Wall
+
+    Extensions:          OverloadedStrings
+
+executable precompiler
+    Main-Is: CLI.hs
+    hs-source-dirs:      src
+    build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+    build-depends:       time
+    build-depends:       directory
+    build-depends:       containers
+    build-depends:       transformers
+    build-depends:       snap-server
+    build-depends:       SHA
+    build-depends:       filepath
+
+    --Ghc-Options:         -Wall
 
     Extensions:          OverloadedStrings
