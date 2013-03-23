@@ -30,6 +30,7 @@ import qualified Data.ByteString.Char8 as C
 import           Data.Digest.Pure.SHA
 import qualified Data.Map              as M
 import           Data.Time.Clock
+import           Data.Time.Clock.POSIX
 
 import           Snap.Core
 
@@ -189,12 +190,19 @@ snapAssetHandler config = route assetRoutes
 
     assetHandler :: Asset -> Snap ()
     assetHandler asset = do
-        result <- liftIO $ (assetBuilder asset) config Nothing
+        req <- getRequest
+        let mbH = getHeader "If-Modified-Since" req
+        ifModifiedSince <- case mbH of
+            Nothing  -> return Nothing
+            (Just s) -> liftIO $ liftM Just $ parseHttpTime s
+
+        result <- liftIO $ (assetBuilder asset) config (toUTCTime ifModifiedSince)
         case result of
             NotModified -> notModified
             Contents x  -> writeLBS x
 
     notModified = modifyResponse $ setResponseStatus 304 "Not Modified"
+    toUTCTime   = liftM $ posixSecondsToUTCTime . realToFrac
 
 
 -- Now, in production mode we need to fingerprint the files. Eg. turn
