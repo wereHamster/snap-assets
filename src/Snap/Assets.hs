@@ -142,21 +142,20 @@ data BuilderResult
 
 -- | Concatenate all files into a single blob.
 concatBuilder :: [ FilePath ] -> Builder
-concatBuilder files config Nothing = do
-    let root  = sourceDirectory config
-    let paths = map (root++) files
-    Contents <$> L.concat <$> mapM L.readFile paths
-
-concatBuilder files config (Just ifModifiedSince) = do
-    let root  = sourceDirectory config
-    let paths = map (root++) files
-
-    mtime <- foldM newestModificationTime ifModifiedSince paths
-    if mtime == ifModifiedSince
-        then return NotModified
-        else Contents <$> L.concat <$> mapM L.readFile paths
+concatBuilder files config ifModifiedSince = do
+    case ifModifiedSince of
+        Nothing -> build
+        Just t  -> do
+            mtime <- foldM newestModificationTime t paths
+            if mtime == t
+                then return NotModified
+                else build
 
   where
+
+    root  = sourceDirectory config
+    paths = map (root++) files
+    build = Contents <$> L.concat <$> mapM L.readFile paths
 
     newestModificationTime :: UTCTime -> FilePath -> IO UTCTime
     newestModificationTime acc path =
