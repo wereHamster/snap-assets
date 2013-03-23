@@ -151,16 +151,16 @@ concatBuilder files config (Just ifModifiedSince) = do
     let root  = sourceDirectory config
     let paths = map (root++) files
 
-    mtime <- foldM oldestModificationTime ifModifiedSince paths
+    mtime <- foldM newestModificationTime ifModifiedSince paths
     if mtime == ifModifiedSince
         then return NotModified
         else Contents <$> L.concat <$> mapM L.readFile paths
 
   where
 
-    oldestModificationTime :: UTCTime -> FilePath -> IO UTCTime
-    oldestModificationTime acc path =
-        min acc <$> getModificationTime path
+    newestModificationTime :: UTCTime -> FilePath -> IO UTCTime
+    newestModificationTime acc path =
+        max acc <$> getModificationTime path
 
 
 -- | This builder builds the file using browserify. That tool is nice because
