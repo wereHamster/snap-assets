@@ -50,7 +50,7 @@ library
   -- other-modules:       
   
   -- Other library packages from which modules are imported.
-  build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+  build-depends:       base, bytestring, snap-core
   build-depends:       time
   build-depends:       directory
   build-depends:       containers
@@ -67,7 +67,7 @@ library
 executable server
     Main-Is: Main.hs
     hs-source-dirs:      src
-    build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+    build-depends:       base, bytestring, snap-core
     build-depends:       time
     build-depends:       directory
     build-depends:       containers
@@ -83,7 +83,7 @@ executable server
 executable precompiler
     Main-Is: CLI.hs
     hs-source-dirs:      src
-    build-depends:       base ==4.6.*, bytestring ==0.10.*, xmlhtml ==0.2.*, snap-core ==0.9.*
+    build-depends:       base, bytestring, snap-core
     build-depends:       time
     build-depends:       directory
     build-depends:       containers

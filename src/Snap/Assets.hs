@@ -1,19 +1,44 @@
-module Snap.Assets where
+module Snap.Assets
+  (
+    -- * Configuration
+    Config
+  , Manifest
+  , defaultConfig
+
+    -- * The Asset type
+  , Asset(..)
+
+    -- * Builers
+  , concatBuilder
+
+    -- * Snap handlers
+  , snapAssetHandler
+
+    -- * Template helpers
+  , assetUrl
+
+    -- * Tooling support
+  , compileAssets
+
+  ) where
 
 
-import Data.Time.Clock
 import           Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy  as L
 import qualified Data.ByteString       as S
 import qualified Data.ByteString.Char8 as C
-import Snap.Core
-import qualified Data.Map as M
-import Data.Digest.Pure.SHA
-import Control.Applicative
-import Control.Monad
-import System.Directory
+import           Data.Digest.Pure.SHA
+import qualified Data.Map              as M
+import           Data.Time.Clock
+
+import           Snap.Core
+
+import           Control.Applicative
+import           Control.Monad
 import           Control.Monad.IO.Class
-import System.FilePath.Posix
+
+import           System.Directory
+import           System.FilePath.Posix
 
 
 data Config = Config
@@ -149,21 +174,6 @@ browserifyBuilder entryPoint _ _ = undefined
 
 
 
--- | All assets that we can compile. Instead of automatically serving all
---   files in the asset root directory, we have a 'whitelist'. So that
---   a client can't request arbitrary files.
-assets :: [ Asset ]
-assets =
-    [ Asset "frameworks.js" $ concatBuilder
-        [ "frameworks/jquery-1.7.1.js"
-        , "frameworks/backbone.js"
-        , "frameworks/jquery.plugin-foo.js"
-        ]
-
-    , Asset "client.js" $ browserifyBuilder "client/entry.js"
-    ]
-
-
 -- In development mode, there is a snap handler which will serve the assets as
 -- we have configured them, simply streaming the output from the builder back
 -- to the client.
@@ -207,8 +217,8 @@ type Manifest = M.Map String String
 --   the output directory, using the correct (fingerprinted) name.
 --   The idea is then to upload the contents of the output directory to your
 --   CDN, so it can be served by fast/dedicated servers.
-precompileAssets :: Config -> String -> IO Manifest
-precompileAssets config outputDirectory = do
+compileAssets :: Config -> String -> IO Manifest
+compileAssets config outputDirectory = do
     createDirectoryIfMissing True outputDirectory
     foldM updateManifest M.empty (assetDefinitions config)
 
