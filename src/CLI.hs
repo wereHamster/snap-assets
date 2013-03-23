@@ -19,9 +19,10 @@ assets =
 
 main :: IO ()
 main = do
-    config <- A.defaultConfig
-    fingerprint <- A.assetFingerprint config assets (head assets)
+    config0 <- A.defaultConfig
+    let config = config0 { A.assetDefinitions = assets }
+    fingerprint <- A.assetFingerprint config (head assets)
     putStrLn fingerprint
 
-    manifest <- A.precompileAssets config assets "output"
+    manifest <- A.precompileAssets config "output"
     putStrLn $ show manifest

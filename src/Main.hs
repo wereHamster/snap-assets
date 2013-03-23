@@ -5,6 +5,7 @@ import Snap.Core
 import Snap.Http.Server
 import System.Directory
 import Control.Applicative
+import Control.Monad.IO.Class
 
 
 assets :: [ A.Asset ]
@@ -19,8 +20,18 @@ assets =
 
 main :: IO ()
 main = do
-    config <- A.defaultConfig
-    quickHttpServe $ site config
+    config0 <- A.defaultConfig
+    let config1 = config0 { A.assetDefinitions = assets }
+
+    manifest <- A.precompileAssets config1 "output"
+    putStrLn $ show manifest
+
+    let config2 = config1 { A.manifest = Just manifest }
+
+    quickHttpServe $ site $ config2
 
 site :: A.Config -> Snap ()
-site config = A.snapAssetHandler config assets
+site config = do
+    url <- A.assetUrl config "frameworks.js"
+    liftIO $ putStrLn url
+    A.snapAssetHandler config

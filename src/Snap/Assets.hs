@@ -16,7 +16,6 @@ import           Control.Monad.IO.Class
 import System.FilePath.Posix
 
 
-
 data Config = Config
     { sourceDirectory :: String
       -- ^ The root path where the assets are kept. Paths you use in the
@@ -31,7 +30,7 @@ data Config = Config
       --   have the snap handler disabled (eg. when running in production
       --   mode), it's safe to leave this list empty.
 
-    , assetHost :: Snap S.ByteString
+    , assetHost :: Snap String
       -- ^ The asset host used to serve the assets. Used by 'assetUrl' and
       --   'assetPath' to generate the urls. Also see 'pathPrefix'. You
       --   generally have two choices:
@@ -61,7 +60,6 @@ data Config = Config
       --      >
       --      >   assetUrl   ->  "http://domain.tld/assets/file.js"
       --      >   assetPath  ->  "/assets/file.js"
-      --
 
     , manifest :: Maybe Manifest
       -- ^ If set, asset urls and paths will be fingerprinted using the hashes
@@ -82,8 +80,8 @@ defaultConfig = do
         , manifest         = Nothing
         }
 
-fromRequest :: Snap S.ByteString
-fromRequest = rqServerName <$> getRequest
+fromRequest :: Snap String
+fromRequest = C.unpack <$> rqServerName <$> getRequest
 
 
 -- | Describes an asset that is served to the clients. Each asset has a name
@@ -170,14 +168,15 @@ assets =
 -- we have configured them, simply streaming the output from the builder back
 -- to the client.
 
-snapAssetHandler :: Config -> [ Asset ] -> Snap ()
-snapAssetHandler config assets = route assetRoutes
+snapAssetHandler :: Config -> Snap ()
+snapAssetHandler config = route assetRoutes
   where
 
-    assetRoutes = map snapHandler assets
+    prefix      = pathPrefix config
+    assetRoutes = map snapHandler (assetDefinitions config)
 
     snapHandler :: Asset -> ( S.ByteString, Snap () )
-    snapHandler asset = ( C.pack (assetName asset), assetHandler asset )
+    snapHandler asset = ( C.pack (prefix ++ "/" ++ assetName asset), assetHandler asset )
 
     assetHandler :: Asset -> Snap ()
     assetHandler asset = do
@@ -208,24 +207,29 @@ type Manifest = M.Map String String
 --   the output directory, using the correct (fingerprinted) name.
 --   The idea is then to upload the contents of the output directory to your
 --   CDN, so it can be served by fast/dedicated servers.
-precompileAssets :: Config -> [ Asset ] -> String -> IO Manifest
-precompileAssets config assets outputDirectory = do
+precompileAssets :: Config -> String -> IO Manifest
+precompileAssets config outputDirectory = do
     createDirectoryIfMissing True outputDirectory
-    foldM updateManifest M.empty assets
+    foldM updateManifest M.empty (assetDefinitions config)
 
   where
 
+    prefix = pathPrefix config
+
     updateManifest :: Manifest -> Asset -> IO Manifest
     updateManifest manifest asset = do
-        fingerprint <- assetFingerprint config assets asset
+        fingerprint <- assetFingerprint config asset
         let name = fingerprintedAssetName (assetName asset) fingerprint
 
         result <- (assetBuilder asset) config Nothing
         case result of
             NotModified -> error "noway"
             Contents contents -> do
-                parsedContents <- resolveReferences config assets contents
-                L.writeFile (outputDirectory ++ "/" ++ name) parsedContents
+                let dir = (outputDirectory ++ "/" ++ prefix)
+
+                parsedContents <- resolveReferences config contents
+                createDirectoryIfMissing True dir
+                L.writeFile (dir ++ "/" ++ name) parsedContents
 
                 return $ M.insert (assetName asset) fingerprint manifest
 
@@ -254,13 +258,13 @@ precompileAssets config assets outputDirectory = do
 -- | Run the builder to get the contents, and create the fingerprint (SHA1).
 --   Because the fingerprint can depend on other assets, this function needs
 --   to know the config and the list of all assets.
-assetFingerprint :: Config -> [ Asset ] -> Asset -> IO String
-assetFingerprint config assets asset = do
+assetFingerprint :: Config -> Asset -> IO String
+assetFingerprint config asset = do
     result <- (assetBuilder asset) config Nothing
     case result of
         NotModified -> error "noway"
         Contents contents -> do
-            parsedContents <- resolveReferences config assets contents
+            parsedContents <- resolveReferences config contents
             return $ showDigest $ sha1 parsedContents
 
 
@@ -279,8 +283,8 @@ fingerprintedAssetName name fingerprint =
 --   The individual builders may want to decide whether to use this function
 --   or not. For example, it makes sense to use it on JavaScript or CSS files,
 --   but not so much on images.
-resolveReferences :: Config -> [ Asset ] -> ByteString -> IO ByteString
-resolveReferences config assets contents = do
+resolveReferences :: Config -> ByteString -> IO ByteString
+resolveReferences config contents = do
 
     -- Scan the contents for magic instructions such as <%= asset_path ... %>
     -- and replace those references with the correct urls. This may need to be
@@ -313,9 +317,19 @@ minifyJavascript config lastModified result =
     -- and capture its output.
 
 
-assetPath :: Maybe Manifest -> String -> String
-assetPath Nothing         name = name
-assetPath (Just manifest) name = do
-    case M.lookup name manifest of
-        Nothing -> error $ "Asset " ++ name ++ " not in the manifest"
-        Just fingerprint -> fingerprintedAssetName name fingerprint
+-- | Generate the asset url for the asset with the given name. If we have
+--   a manifest we fingerprint the name with the hash from the manifest.
+assetUrl :: Config -> String -> Snap String
+assetUrl config name = do
+    host <- assetHost config
+    case (manifest config) of
+        Nothing       -> buildUrl host name
+        Just manifest ->
+            case M.lookup name manifest of
+                Nothing -> error $ "Asset " ++ name ++ " not in the manifest"
+                Just fingerprint -> buildUrl host (fingerprintedAssetName name fingerprint)
+
+  where
+
+    prefix             = pathPrefix config
+    buildUrl host path = return $ "//" ++ host ++ prefix ++ "/" ++ path
