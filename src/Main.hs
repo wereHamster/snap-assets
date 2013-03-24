@@ -32,6 +32,8 @@ main = do
 
 site :: A.Config -> Snap ()
 site config = do
+    liftIO $ putStrLn $ A.assetPath config "frameworks.js"
+
     url <- A.assetUrl config "frameworks.js"
     liftIO $ putStrLn url
     A.snapAssetHandler config

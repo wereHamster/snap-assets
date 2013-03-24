@@ -17,6 +17,7 @@ module Snap.Assets
   , snapAssetHandler
 
     -- * Template helpers
+  , assetPath
   , assetUrl
 
     -- * Tooling support
@@ -356,19 +357,24 @@ minifyJavascript config lastModified result =
     -- and capture its output.
 
 
+assetPath :: Config -> String -> String
+assetPath config name =
+    case (manifest config) of
+        Nothing       -> buildPath name
+        Just manifest ->
+            case M.lookup name manifest of
+                Nothing -> error $ "Asset " ++ name ++ " not in the manifest"
+                Just fingerprint -> buildPath (fingerprintedAssetName name fingerprint)
+
+  where
+
+    prefix         = pathPrefix config
+    buildPath path = "/" ++ prefix ++ "/" ++ path
+
+
 -- | Generate the asset url for the asset with the given name. If we have
 --   a manifest we fingerprint the name with the hash from the manifest.
 assetUrl :: Config -> String -> Snap String
 assetUrl config name = do
     host <- assetHost config
-    case (manifest config) of
-        Nothing       -> buildUrl host name
-        Just manifest ->
-            case M.lookup name manifest of
-                Nothing -> error $ "Asset " ++ name ++ " not in the manifest"
-                Just fingerprint -> buildUrl host (fingerprintedAssetName name fingerprint)
-
-  where
-
-    prefix             = pathPrefix config
-    buildUrl host path = return $ host ++ "/" ++ prefix ++ "/" ++ path
+    return $ host ++ assetPath config name
