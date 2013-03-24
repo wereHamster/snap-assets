@@ -179,14 +179,14 @@ browserifyBuilder entryPoint _ _ = undefined
 -- to the client.
 
 snapAssetHandler :: Config -> Snap ()
-snapAssetHandler config = route assetRoutes
+snapAssetHandler config = (dir $ C.pack prefix) $ route assetRoutes
   where
 
     prefix      = pathPrefix config
     assetRoutes = map snapHandler (assetDefinitions config)
 
     snapHandler :: Asset -> ( S.ByteString, Snap () )
-    snapHandler asset = ( C.pack (prefix ++ "/" ++ assetName asset), assetHandler asset )
+    snapHandler asset = ( C.pack $ assetName asset, assetHandler asset )
 
     assetHandler :: Asset -> Snap ()
     assetHandler asset = do
