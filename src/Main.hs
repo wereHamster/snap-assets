@@ -15,6 +15,7 @@ assets =
         , "frameworks/backbone.js"
         , "frameworks/jquery.plugin-foo.js"
         ]
+    , A.Asset "test" $ A.concatBuilder [ "test.js" ]
     ]
 
 
@@ -23,12 +24,11 @@ main = do
     config0 <- A.defaultConfig
     let config1 = config0 { A.assetDefinitions = assets }
 
-    manifest <- A.compileAssets config1 "output"
-    putStrLn $ show manifest
+    -- manifest <- A.compileAssets config1 "output"
+    -- putStrLn $ show manifest
+    -- let config2 = config1 { A.manifest = Just manifest }
 
-    let config2 = config1 { A.manifest = Just manifest }
-
-    quickHttpServe $ site $ config2
+    quickHttpServe $ site $ config1
 
 site :: A.Config -> Snap ()
 site config = do

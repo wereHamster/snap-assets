@@ -14,6 +14,7 @@ assets =
         , "frameworks/backbone.js"
         , "frameworks/jquery.plugin-foo.js"
         ]
+    , A.Asset "test" $ A.concatBuilder [ "test.js" ]
     ]
 
 

@@ -57,6 +57,8 @@ library
   build-depends:       transformers
   build-depends:       SHA
   build-depends:       filepath
+  build-depends:       template
+  build-depends:       text
   
   -- Directories containing source files.
   hs-source-dirs:      src
@@ -75,6 +77,8 @@ executable server
     build-depends:       snap-server
     build-depends:       SHA
     build-depends:       filepath
+    build-depends:       template
+    build-depends:       text
 
     --Ghc-Options:         -Wall
 
@@ -91,6 +95,8 @@ executable precompiler
     build-depends:       snap-server
     build-depends:       SHA
     build-depends:       filepath
+    build-depends:       template
+    build-depends:       text
 
     --Ghc-Options:         -Wall
 

@@ -32,6 +32,13 @@ import qualified Data.ByteString       as S
 import qualified Data.ByteString.Char8 as C
 import           Data.Digest.Pure.SHA
 import qualified Data.Map              as M
+import           Data.Maybe
+import qualified Data.List             as List
+import qualified Data.Text             as T
+import qualified Data.Text.Lazy        as LT
+import qualified Data.Text.Encoding    as E
+import qualified Data.Text.Lazy.Encoding  as LE
+import           Data.Text.Template
 import           Data.Time.Clock
 import           Data.Time.Clock.POSIX
 
@@ -222,7 +229,9 @@ snapAssetHandler config = (dir $ C.pack prefix) $ route assetRoutes
         result <- liftIO $ (assetBuilder asset) config (toUTCTime ifModifiedSince)
         case result of
             NotModified -> notModified
-            Contents x  -> writeLBS x
+            Contents x  -> do
+                contents <- liftIO $ resolveReferences (noop config) x
+                writeLBS contents
 
     notModified = modifyResponse $ setResponseStatus 304 "Not Modified"
     toUTCTime   = liftM $ posixSecondsToUTCTime . realToFrac
@@ -258,54 +267,32 @@ compileAssets config outputDirectory = do
 
     updateManifest :: Manifest -> Asset -> IO Manifest
     updateManifest manifest asset = do
-        fingerprint <- assetFingerprint config asset
-        let name = fingerprintedAssetName (assetName asset) fingerprint
-
         result <- (assetBuilder asset) config Nothing
         case result of
             NotModified -> error "noway"
             Contents contents -> do
                 let dir = (outputDirectory ++ "/" ++ prefix)
-
-                parsedContents <- resolveReferences config contents
                 createDirectoryIfMissing True dir
+
+                parsedContents <- resolveReferences (fromAssets config) contents
+                let fingerprint = fingerprintFromContents parsedContents
+                let name = fingerprintedAssetName (assetName asset) fingerprint
                 L.writeFile (dir ++ "/" ++ name) parsedContents
 
                 return $ M.insert (assetName asset) fingerprint manifest
 
 
+-- | The fingerprint is the SHA1 of the asset contents.
+fingerprintFromContents :: ByteString -> String
+fingerprintFromContents = showDigest . sha1
 
-
-
--- I have that much written in JavaScript and it's in use in encounter. But
--- there is an additional complexity: What if you reference assets from other
--- assets? Think images referenced from css files. So the builders need to
--- preprocess all files to see if that is happening, so they can insert the
--- proper urls.
---
--- In the Rails asset pipeline you'd write something like this in your CSS
--- file (ERB syntax):
---
---     .foo {
---         background-url: url(<%= asset_path "images/something.png" %>);
---     }
-
--- The case of referencing an image from a CSS file is usually no problem. But
--- if two files reference each other, you'll get into trouble. So ideally
--- you'd detect that instead of blowing up your stack.
-
-
--- | Run the builder to get the contents, and create the fingerprint (SHA1).
---   Because the fingerprint can depend on other assets, this function needs
---   to know the config and the list of all assets.
+-- | Build the asset and return its fingerprint.
 assetFingerprint :: Config -> Asset -> IO String
 assetFingerprint config asset = do
     result <- (assetBuilder asset) config Nothing
     case result of
         NotModified -> error "noway"
-        Contents contents -> do
-            parsedContents <- resolveReferences config contents
-            return $ showDigest $ sha1 parsedContents
+        Contents contents -> return $ fingerprintFromContents contents
 
 
 
@@ -317,25 +304,53 @@ fingerprintedAssetName name fingerprint =
     in (fst split) ++ "-" ++ fingerprint ++ (snd split)
 
 
--- | This function takes the contents of an asset and replaces all references
---   to other assets with the correct urls.
+
+-- | This function takes the contents of an asset and substitutes asset-path
+--   placeholders with the actual paths. The context defines how this
+--   substitution is performed.
 --
---   The individual builders may want to decide whether to use this function
---   or not. For example, it makes sense to use it on JavaScript or CSS files,
---   but not so much on images.
-resolveReferences :: Config -> ByteString -> IO ByteString
-resolveReferences config contents = do
+--   The noop context replaces the paths with non-fingerprinted paths, and is
+--   used by the snap asset handler when running in develompent mode. The
+--   'fromAssets' context replaces the paths with fingerprinted paths and is
+--   used when compiling the assets for production mode.
+--
+--   The templating library used is not really suitable for web content. The
+--   dollar sign ($) is used very often in JavaScript files. Furthermore,
+--   since the identifiers are restricted to valid Haskell identifiers, we
+--   can't use filenames or even paths. E.g. this would be desired by is
+--   currently invalid:
+--
+--   > ${images/background.png}
 
-    -- Scan the contents for magic instructions such as <%= asset_path ... %>
-    -- and replace those references with the correct urls. This may need to be
-    -- done recursively.
-    --
-    -- That requires keeping some kind of state, such as the list of files
-    -- you've already processed etc. But this is getting way over my head
-    -- and/or haskell skills.
+resolveReferences :: ContextA IO -> ByteString -> IO ByteString
+resolveReferences context contents = do
 
-    -- For now, this function is a noop.
-    return contents
+    ret <- substituteA asText context
+    return $ LE.encodeUtf8 ret
+
+  where
+
+    asText :: T.Text
+    asText = E.decodeUtf8 $ L.toStrict contents
+
+fromAssets :: Config -> ContextA IO
+fromAssets config nameAsText = do
+    fingerprint <- assetFingerprint config asset
+    return $ T.pack $ buildPath (fingerprintedAssetName name fingerprint)
+
+  where
+
+    name   = T.unpack nameAsText
+    assets = assetDefinitions config
+    asset  = fromJust $ List.find (\x -> assetName x == name) assets
+    prefix = pathPrefix config
+
+    buildPath path = "/" ++ prefix ++ "/" ++ path
+
+noop :: Config -> ContextA IO
+noop config nameAsText = do
+    return $ T.concat [ "/", T.pack (pathPrefix config), "/", nameAsText ]
+
 
 
 -- Lastly, it is desired to compress/minify the files in production mode. This
