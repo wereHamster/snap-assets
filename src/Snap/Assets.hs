@@ -26,6 +26,7 @@ module Snap.Assets
   ) where
 
 
+import qualified Data.Attoparsec.Text  as AP
 import           Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy  as L
 import qualified Data.ByteString       as S
@@ -36,10 +37,12 @@ import           Data.Maybe
 import qualified Data.List             as List
 import qualified Data.Text             as T
 import qualified Data.Text.Encoding    as E
+import qualified Data.Text.Lazy        as LT
 import qualified Data.Text.Lazy.Encoding  as LE
-import           Data.Text.Template
 import           Data.Time.Clock
 import           Data.Time.Clock.POSIX
+import           Data.Traversable (traverse)
+
 
 import           Snap.Core hiding (path)
 
@@ -301,19 +304,11 @@ fingerprintedAssetName name fingerprint =
 --   used by the snap asset handler when running in develompent mode. The
 --   'fromAssets' context replaces the paths with fingerprinted paths and is
 --   used when compiling the assets for production mode.
---
---   The templating library used is not really suitable for web content. The
---   dollar sign ($) is used very often in JavaScript files. Furthermore,
---   since the identifiers are restricted to valid Haskell identifiers, we
---   can't use filenames or even paths. E.g. this would be desired by is
---   currently invalid:
---
---   > ${images/background.png}
 
-resolveReferences :: ContextA IO -> ByteString -> IO ByteString
+resolveReferences :: Context -> ByteString -> IO ByteString
 resolveReferences context contents = do
 
-    ret <- substituteA asText context
+    ret <- render (template asText) context
     return $ LE.encodeUtf8 ret
 
   where
@@ -321,7 +316,46 @@ resolveReferences context contents = do
     asText :: T.Text
     asText = E.decodeUtf8 $ L.toStrict contents
 
-fromAssets :: Config -> ContextA IO
+
+type Context = T.Text -> IO T.Text
+data Frag = Lit T.Text | Var T.Text
+newtype Template = Template [ Frag ]
+
+template :: T.Text -> Template
+template input = case AP.parseOnly (AP.many1 fragmentParser) input of
+    Left  x -> error x
+    Right x -> Template x
+
+fragmentParser :: AP.Parser Frag
+fragmentParser =
+
+    var <|> lit
+
+  where
+
+    var = do
+        text <- AP.string "<*" *> AP.manyTill AP.anyChar (AP.string "*>")
+        return $ Var $ T.strip $ T.pack text
+
+    lit = do
+        text <- AP.takeTill ('<'==)
+        if T.null text
+            then fail "literal"
+            else return $ Lit text
+
+
+render :: Template -> Context -> IO LT.Text
+render (Template frags) ctxFunc =
+
+    LT.fromChunks <$> traverse renderFrag frags
+
+  where
+
+    renderFrag (Lit s) = pure s
+    renderFrag (Var x) = ctxFunc x
+
+
+fromAssets :: Config -> Context
 fromAssets config nameAsText = do
     fingerprint <- assetFingerprint config asset
     return $ T.pack $ buildPath (fingerprintedAssetName name fingerprint)
@@ -335,7 +369,7 @@ fromAssets config nameAsText = do
 
     buildPath path = "/" ++ prefix ++ "/" ++ path
 
-noop :: Config -> ContextA IO
+noop :: Config -> Context
 noop config nameAsText = do
     return $ T.concat [ "/", T.pack (pathPrefix config), "/", nameAsText ]
 

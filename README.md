@@ -134,7 +134,7 @@ a CSS file, you have to insert special placeholders which will be resolved
 upon compilation.
 
     body {
-        background-image: url(${images/background.png});
+        background-image: url(<* images/background.png *>);
     }
 
 will turn into something like this:
@@ -142,10 +142,3 @@ will turn into something like this:
     body {
         background-image: url(/images/background-c10a4572b80930ff9c13c4f09269bfe809c06a48.png);
     }
-
-Caveat: It actually doesn't work that way. The templating langauge that is
-used now doesn't support that. And using `$` as the escape symbol is very bad,
-especially for JavaScript sources where the dollar sign often appears, so
-you'd have to escape it all the time. We'll have to switch to a different
-templating system to fix that. Suggestions which alternatives are available
-are very welcome.

@@ -1,2 +1,2 @@
 // jquery plugin
-// path: ${test}
+// path: <* test.js *>
