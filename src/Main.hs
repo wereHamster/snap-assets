@@ -23,7 +23,7 @@ main = do
     config0 <- A.defaultConfig
     let config1 = config0 { A.assetDefinitions = assets }
 
-    manifest <- A.precompileAssets config1 "output"
+    manifest <- A.compileAssets config1 "output"
     putStrLn $ show manifest
 
     let config2 = config1 { A.manifest = Just manifest }
