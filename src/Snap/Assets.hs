@@ -35,14 +35,13 @@ import qualified Data.Map              as M
 import           Data.Maybe
 import qualified Data.List             as List
 import qualified Data.Text             as T
-import qualified Data.Text.Lazy        as LT
 import qualified Data.Text.Encoding    as E
 import qualified Data.Text.Lazy.Encoding  as LE
 import           Data.Text.Template
 import           Data.Time.Clock
 import           Data.Time.Clock.POSIX
 
-import           Snap.Core
+import           Snap.Core hiding (path)
 
 import           Control.Applicative
 import           Control.Monad
@@ -193,26 +192,16 @@ concatBuilder files config ifModifiedSince = do
         max acc <$> getModificationTime path
 
 
--- | This builder builds the file using browserify. That tool is nice because
---   it automatically traverses all dependencies by scanning JavaScript files
---   and looking for calls to require(...).
-browserifyBuilder :: FilePath -> Builder
-browserifyBuilder entryPoint _ _ = undefined
-    -- spawn the browserify tool to build the javascript file.
-    -- System.Process.createProcess "browserify <path>", capture the stdout of
-    -- that command and that's what we want to return.
-
-
 
 -- In development mode, there is a snap handler which will serve the assets as
 -- we have configured them, simply streaming the output from the builder back
 -- to the client.
 
 snapAssetHandler :: Config -> Snap ()
-snapAssetHandler config = (dir $ C.pack prefix) $ route assetRoutes
+snapAssetHandler config = dir prefix $ route assetRoutes
   where
 
-    prefix      = pathPrefix config
+    prefix      = C.pack $ pathPrefix config
     assetRoutes = map snapHandler (assetDefinitions config)
 
     snapHandler :: Asset -> ( S.ByteString, Snap () )
@@ -221,8 +210,7 @@ snapAssetHandler config = (dir $ C.pack prefix) $ route assetRoutes
     assetHandler :: Asset -> Snap ()
     assetHandler asset = do
         req <- getRequest
-        let mbH = getHeader "If-Modified-Since" req
-        ifModifiedSince <- case mbH of
+        ifModifiedSince <- case getHeader "If-Modified-Since" req of
             Nothing  -> return Nothing
             (Just s) -> liftIO $ liftM Just $ parseHttpTime s
 
@@ -266,20 +254,20 @@ compileAssets config outputDirectory = do
     prefix = pathPrefix config
 
     updateManifest :: Manifest -> Asset -> IO Manifest
-    updateManifest manifest asset = do
+    updateManifest mf asset = do
         result <- (assetBuilder asset) config Nothing
         case result of
             NotModified -> error "noway"
             Contents contents -> do
-                let dir = (outputDirectory ++ "/" ++ prefix)
-                createDirectoryIfMissing True dir
+                let directory = (outputDirectory ++ "/" ++ prefix)
+                createDirectoryIfMissing True directory
 
                 parsedContents <- resolveReferences (fromAssets config) contents
                 let fingerprint = fingerprintFromContents parsedContents
                 let name = fingerprintedAssetName (assetName asset) fingerprint
-                L.writeFile (dir ++ "/" ++ name) parsedContents
+                L.writeFile (directory ++ "/" ++ name) parsedContents
 
-                return $ M.insert (assetName asset) fingerprint manifest
+                return $ M.insert (assetName asset) fingerprint mf
 
 
 -- | The fingerprint is the SHA1 of the asset contents.
@@ -353,31 +341,12 @@ noop config nameAsText = do
 
 
 
--- Lastly, it is desired to compress/minify the files in production mode. This
--- can be done either implicitly (detect filename extension and run the
--- correct compressor depending on the file type) or explicitly by
--- enabling/disabling them in the configuration.
-
-minifyJavascript :: Config -> Maybe UTCTime -> BuilderResult -> IO BuilderResult
-minifyJavascript config lastModified result =
-    case result of
-        NotModified       -> return NotModified
-        Contents contents -> Contents <$> uglify contents
-
-  where
-
-    uglify :: ByteString -> IO ByteString
-    uglify x = undefined
-    -- Spawn the 'uglifyjs' commandline utility, feed it the pretty javascript
-    -- and capture its output.
-
-
 assetPath :: Config -> String -> String
 assetPath config name =
     case (manifest config) of
-        Nothing       -> buildPath name
-        Just manifest ->
-            case M.lookup name manifest of
+        Nothing -> buildPath name
+        Just mf ->
+            case M.lookup name mf of
                 Nothing -> error $ "Asset " ++ name ++ " not in the manifest"
                 Just fingerprint -> buildPath (fingerprintedAssetName name fingerprint)
 
